@@ -76,6 +76,7 @@ const child = spawn(process.execPath, [SERVER], {
     ...process.env,
     CACHE_MANAGER_STORE_DIR: STORE_DIR,
     CACHE_MANAGER_TRANSCRIPT_DIR: TRANSCRIPT_DIR,
+    CACHE_MANAGER_WEB_DASHBOARD: "0",
   },
   stdio: ["pipe", "pipe", "pipe"],
 });

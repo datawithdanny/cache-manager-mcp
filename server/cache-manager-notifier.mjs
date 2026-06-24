@@ -26,7 +26,8 @@ const IDLE_SECONDS = positiveNumberEnv(
   "CACHE_MANAGER_NOTIFY_IDLE_SECONDS",
   240,
 );
-const COPY_ON_IDLE = boolEnv("CACHE_MANAGER_NOTIFY_COPY_ON_IDLE", true);
+const COPY_ON_IDLE = boolEnv("CACHE_MANAGER_NOTIFY_COPY_ON_IDLE", false);
+const NOTIFY_TITLE = "🐷 Cache Manager";
 const CLICK_TO_COPY = boolEnv("CACHE_MANAGER_NOTIFY_CLICK_TO_COPY", false);
 const ENABLED = boolEnv("CACHE_MANAGER_NOTIFIER_ENABLED", true);
 const DELIVERY = process.env.CACHE_MANAGER_NOTIFY_DELIVERY ?? "auto";
@@ -327,7 +328,7 @@ function checkSessions() {
 
     if (idleSeconds >= IDLE_WARNING_SECONDS && !sessionState.warning_sent_at) {
       notify(
-        "Cache Manager",
+        NOTIFY_TITLE,
         `${notificationLabel} has had no heartbeat for ${formatDuration(idleMs)}. Consider checkpointing soon.`,
       );
       sessionState.warning_sent_at = nowIso();
@@ -345,7 +346,7 @@ function checkSessions() {
 
       const execute = CLICK_TO_COPY ? clickToCopyCommand(session.id) : null;
       notify(
-        "Cache Manager",
+        NOTIFY_TITLE,
         copied
           ? `${notificationLabel} is idle for ${formatDuration(idleMs)}. Handoff prompt copied to clipboard.`
           : CLICK_TO_COPY

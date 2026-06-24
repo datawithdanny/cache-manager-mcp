@@ -21,7 +21,9 @@ This workspace has an MCP server named `cache_manager`. Use it as follows:
 
 1. RESUME — at the start of a chat, call `cache_manager.resume_or_start` with a
    stable `alias` (one per project/task). If it returns a memory, read it as
-   restart context before anything else.
+   restart context before anything else. If the response includes a
+   `dashboard_url`, surface that localhost link to the user once so they can
+   open the live web dashboard.
 2. HEARTBEAT — at the start of each chat request (a new user prompt), call
    `cache_manager.heartbeat` with `phase: "start"` so the dashboard shows the chat
    running. When you finish answering that request (after all turns/tool calls),

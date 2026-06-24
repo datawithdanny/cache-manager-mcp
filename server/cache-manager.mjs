@@ -8,6 +8,8 @@ import {
   resolveTranscriptSessionIds,
 } from "./transcript-stats.mjs";
 import { computeMcpOverhead, formatOverhead } from "./mcp-overhead.mjs";
+import { startWebDashboard } from "./cache-manager-web.mjs";
+import { buildRestartPrompt } from "./dashboard-data.mjs";
 import {
   DEFAULT_TTL_MS,
   DEFAULT_WARN_BEFORE_MS,
@@ -246,28 +248,9 @@ function pruneMemories(options = {}) {
   };
 }
 
-function restartPrompt(args = {}) {
-  const aliasOrSession = args.alias
-    ? `alias \`${args.alias}\``
-    : `session_id \`${args.session_id || "default"}\``;
-  const resumeArgs = args.alias
-    ? { alias: args.alias }
-    : { session_id: args.session_id || "default" };
-  return [
-    "Start a fresh MCP client conversation and paste:",
-    "",
-    `Resume cache-manager ${aliasOrSession}.`,
-    `Before doing anything else, call cache-manager.resume_or_start with ${JSON.stringify(
-      {
-        ...resumeArgs,
-        label: "Resumed from checkpoint",
-        ttl_seconds: 300,
-        warn_before_seconds: 45,
-        idle_seconds: 240,
-      },
-    )}; read any returned memory content as restart context, then continue with my next goal.`,
-  ].join("\n");
-}
+// Restart prompt is built by the shared dashboard-data layer so the MCP tool
+// output and the web dashboard's click-to-copy stay byte-identical.
+const restartPrompt = buildRestartPrompt;
 
 // Example restart/handoff prompt the agent fills in when checkpointing. Shared
 // by the handoff_prompt tool and the proactive checkpoint suggestion bundle.
@@ -356,6 +339,18 @@ function countdownText(status) {
   return lines.join("\n");
 }
 
+// Web dashboard URL, folded into the chat-start responses (start_session /
+// resume_or_start) so the agent can surface the link to the user. Null until the
+// server has bound its port (resolved asynchronously at startup) or when the
+// dashboard is disabled; in those cases the fields are simply omitted.
+function dashboardFields() {
+  if (!webDashboardUrl) return {};
+  return {
+    dashboard_url: webDashboardUrl,
+    dashboard_hint: `Live web dashboard available at ${webDashboardUrl} — share this link with the user so they can watch their tracked chats.`,
+  };
+}
+
 function textResult(payload) {
   return {
     content: [
@@ -378,7 +373,7 @@ function textResult(payload) {
 // added to context every session.
 const SERVER_INSTRUCTIONS = [
   "Cache Manager keeps per-chat context so agents can resume cheaply across sessions. Workflow:",
-  "1. RESUME — at the start of a chat, call resume_or_start with a stable `alias` (one per project/task). If it returns a memory, read it as restart context before anything else.",
+  "1. RESUME — at the start of a chat, call resume_or_start with a stable `alias` (one per project/task). If it returns a memory, read it as restart context before anything else. If the response includes a `dashboard_url`, surface that localhost link to the user once so they can open the live web dashboard.",
   "2. HEARTBEAT — at the start of each chat request (a new user prompt), call heartbeat with phase:'start' so the dashboard shows the chat 'running'. When you finish answering that request (after ALL the turns/tool calls needed to respond), call heartbeat with phase:'end' immediately before your final response text so the idle/TTL countdown resumes. Optionally send plain heartbeat pings (phase:'progress') after meaningful steps in between. This feeds the external dashboard; it is required for the dashboard, not a checkpoint trigger.",
   "3. CHECKPOINT at natural cut points — when you finish a substantial unit of work (a logical stopping point, usually the end of a long task), call checkpoint with a compact summary (goal, what changed, decisions, next steps). Do NOT checkpoint mid-task or merely because time has passed.",
   "4. RESUME LATER — in a new chat, call resume_or_start with the same alias to restore the latest checkpoint.",
@@ -1166,7 +1161,7 @@ function recordMcpCall(name, args, result) {
 function callTool(name, args = {}) {
   if (name === "start_session") {
     const { alias, status } = startSession(args);
-    return textResult({ ok: true, alias, status });
+    return textResult({ ok: true, alias, status, ...dashboardFields() });
   }
 
   if (name === "heartbeat") {
@@ -1288,6 +1283,7 @@ function callTool(name, args = {}) {
         : { found: false, session_id: lookupSessionId, alias: args.alias },
       alias,
       status,
+      ...dashboardFields(),
     });
   }
 
@@ -1584,6 +1580,36 @@ if (PRUNE_ON_STARTUP) {
   } catch (error) {
     console.error(
       `[cache-manager] prune-on-startup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+// Web dashboard: launched alongside the MCP server so a live, read-only view is
+// available at a localhost URL the agent can surface to the user. On by default;
+// disable with CACHE_MANAGER_WEB_DASHBOARD=0. Fully guarded — a dashboard
+// failure must never crash or block the MCP server, and it must never write to
+// stdout (reserved for the JSON-RPC stream). The resolved URL is held here and
+// folded into start_session / resume_or_start responses.
+let webDashboardUrl = null;
+if (boolEnv("CACHE_MANAGER_WEB_DASHBOARD", true)) {
+  try {
+    startWebDashboard()
+      .then((url) => {
+        webDashboardUrl = url;
+        if (url) console.error(`[cache-manager] web dashboard at ${url}`);
+      })
+      .catch((error) => {
+        console.error(
+          `[cache-manager] web dashboard failed to start: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+  } catch (error) {
+    console.error(
+      `[cache-manager] web dashboard failed to start: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );

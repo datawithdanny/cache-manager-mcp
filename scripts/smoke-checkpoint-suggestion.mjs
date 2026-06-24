@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER = path.join(ROOT, "server", "cache-manager.mjs");
 const STORE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "cm-cp-smoke-"));
-const ENV = { ...process.env, CACHE_MANAGER_STORE_DIR: STORE_DIR };
+const ENV = { ...process.env, CACHE_MANAGER_STORE_DIR: STORE_DIR, CACHE_MANAGER_WEB_DASHBOARD: "0" };
 
 const child = spawn(process.execPath, [SERVER], { cwd: ROOT, env: ENV, stdio: ["pipe", "pipe", "pipe"] });
 let stdout = "", stderr = "";

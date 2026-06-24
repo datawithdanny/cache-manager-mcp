@@ -15,7 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER = path.join(ROOT, "server", "cache-manager.mjs");
 const STORE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "cm-turn-smoke-"));
 const SESSION_FILE = path.join(STORE_DIR, "sessions.json");
-const ENV = { ...process.env, CACHE_MANAGER_STORE_DIR: STORE_DIR };
+const ENV = { ...process.env, CACHE_MANAGER_STORE_DIR: STORE_DIR, CACHE_MANAGER_WEB_DASHBOARD: "0" };
 
 // ---------- Read side: sessionStatus has no idle/TTL ceiling ----------
 const { sessionStatus, DEFAULT_MAX_TURN_MS } = await import(
@@ -142,6 +142,32 @@ try {
   const ended = await heartbeat({ alias: "turn", phase: "end", action: "done" });
   assert.equal(ended.status.running, false, "phase:end closes the turn");
   assert.ok(ended.status.last_turn_ms >= 0, "last_turn_ms recorded on end");
+
+  // (d) After phase:"end" the dashboard's idle/TTL countdown must RESUME: the
+  // end heartbeat re-anchors last_action_at_ms + ttl_anchor_ms to the end
+  // instant and closes the turn, so as wall-clock advances the session reads as
+  // not-running with idle climbing and TTL draining. Simulate elapsed time by
+  // backdating the stored anchors (the turn stays closed) and re-read status —
+  // this is exactly the row the web dashboard renders.
+  const ts = readStore();
+  const anchored = ts[id].last_action_at_ms; // set to the end instant above
+  assert.equal(ts[id].turn.running, false, "end leaves the stored turn closed");
+  const elapsedSinceEnd = 90 * 1000; // pretend 90s passed with no heartbeat
+  const afterEnd = sessionStatus({
+    ...ts[id],
+    last_action_at_ms: anchored - elapsedSinceEnd,
+    ttl_anchor_ms: anchored - elapsedSinceEnd,
+  });
+  assert.equal(afterEnd.running, false, "stays non-running after end (no new turn)");
+  assert.ok(
+    Math.abs(afterEnd.idle_for_ms - elapsedSinceEnd) < 2000,
+    `idle countdown resumes after end: expected ~90000, got ${afterEnd.idle_for_ms}`,
+  );
+  assert.ok(
+    afterEnd.time_remaining_ms < ts[id].ttl_ms &&
+      Math.abs(afterEnd.time_remaining_ms - (ts[id].ttl_ms - elapsedSinceEnd)) < 2000,
+    `TTL countdown resumes after end: expected ~${ts[id].ttl_ms - elapsedSinceEnd}, got ${afterEnd.time_remaining_ms}`,
+  );
 
   console.log("turn-timer smoke test passed");
 } finally {

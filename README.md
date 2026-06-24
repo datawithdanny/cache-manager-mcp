@@ -478,7 +478,7 @@ The notifier polls `~/.cache/cache-manager-mcp/sessions.json` by default. It sen
 
 - a 3-minute inactivity warning when no heartbeat has been recorded for 180 seconds,
 - a 4-minute inactivity alert when no heartbeat has been recorded for 240 seconds,
-- and, by default, copies a handoff prompt to the system clipboard at the 4-minute alert.
+- and, at the 4-minute alert, shows a popup nudging you to ask the agent to checkpoint the chat. Copying the handoff prompt to the system clipboard is opt-in (`CACHE_MANAGER_NOTIFY_COPY_ON_IDLE=true`); with the web dashboard you usually don't need it.
 
 On macOS it uses `osascript` for notifications and `pbcopy` for clipboard writes. On Linux it tries `notify-send` plus `wl-copy`, `xclip`, or `xsel`. On Windows it tries PowerShell notification support plus `clip`.
 
@@ -490,7 +490,7 @@ CACHE_MANAGER_NOTIFIER_ENABLED=true
 CACHE_MANAGER_NOTIFY_POLL_SECONDS=10
 CACHE_MANAGER_NOTIFY_IDLE_WARNING_SECONDS=180
 CACHE_MANAGER_NOTIFY_IDLE_SECONDS=240
-CACHE_MANAGER_NOTIFY_COPY_ON_IDLE=true
+CACHE_MANAGER_NOTIFY_COPY_ON_IDLE=false
 CACHE_MANAGER_NOTIFY_CLICK_TO_COPY=false
 CACHE_MANAGER_NOTIFY_DELIVERY=auto
 ```
@@ -565,6 +565,52 @@ Smoke test:
 
 ```sh
 node scripts/smoke-dashboard.mjs
+```
+
+## Web dashboard
+
+The MCP server also launches a **web dashboard** automatically on startup — a minimalist, auto-refreshing browser view (pink + green, matching the banner) of every tracked session. When the agent calls `resume_or_start` (or `start_session`), the response includes a `dashboard_url` and a `dashboard_hint`, so the agent can surface the localhost link to you:
+
+```
+http://127.0.0.1:41734
+```
+
+It serves a single page (`/`) that polls a JSON endpoint (`/api/sessions`) and renders one card per session — alias/label, TTL/turn/idle, turns, tokens, cost, savings, severity, and last activity — plus a summary strip (sessions, active, running, total cost, saved-by-cache). It is **read-only** and reuses the exact same row-building logic as the terminal dashboard (`server/dashboard-data.mjs`), so the numbers always agree with the `status`/`session_stats` tools.
+
+Each state has its own accent colour, with a legend at the top so it is obvious at a glance: **running** (a brighter green than the resting "ok" green, with a pulsing badge), **idle** (amber), **near ttl** (orange), and **expired** (red). To keep the main view focused on live work, **expired** aliases are collapsed behind a **"See N more expired"** toggle — only the single most-recent expired alias is kept in the main grid (handy if you need to jump back into the last thing you were doing).
+
+**Click any card to copy a restart prompt** to your clipboard — a ready-to-paste message that resumes that chat in a fresh MCP client from its most recent saved memory. The prompt is built by the same shared template the MCP server's `restart_prompt` uses, so the two never drift. If an alias has no saved memory, the card flags `⊘ no saved memory — can't restart` instead of copying (there is nothing to restore from).
+
+Because MCP clients spawn their own server but share the default store, the **first process to bind the port serves every session sharing that store dir**; the rest detect the port is taken and simply reuse the same URL. (If you run projects with a per-project `CACHE_MANAGER_STORE_DIR`, that reused dashboard only reflects the store of whichever instance bound the port first — run `npm run dashboard:web` standalone with an explicit `CACHE_MANAGER_DASHBOARD_PORT` per store to view each one.) The server binds `127.0.0.1` only — it is a local dev tool, never exposed to the network.
+
+**Failover:** the dashboard's lifetime is *not* tied to the chat that happened to launch first. Every non-owning instance keeps re-attempting the bind in the background (every `CACHE_MANAGER_DASHBOARD_RETRY_MS`, default 3s). When the current owner exits and frees the port, the next instance transparently takes over — so the dashboard stays up at the same URL as long as **any** tracked chat is alive. The retries are unref'd (they never hold a process open) and stop the instant a bind succeeds. Set `CACHE_MANAGER_DASHBOARD_RETRY_MS=0` to disable failover.
+
+Run it standalone (e.g. without an MCP client attached):
+
+```sh
+node server/cache-manager-web.mjs
+# or
+npm run dashboard:web
+```
+
+Configuration:
+
+```sh
+# Disable the auto-launched dashboard entirely
+CACHE_MANAGER_WEB_DASHBOARD=0 node server/cache-manager.mjs
+
+# Change the port (default 41734)
+CACHE_MANAGER_DASHBOARD_PORT=8080 node server/cache-manager-web.mjs
+
+# Failover re-bind cadence in ms (default 3000); 0 disables takeover
+CACHE_MANAGER_DASHBOARD_RETRY_MS=0 node server/cache-manager.mjs
+```
+
+Smoke test:
+
+```sh
+node scripts/smoke-web-dashboard.mjs
+node scripts/smoke-dashboard-failover.mjs
 ```
 
 ## Native client notifications

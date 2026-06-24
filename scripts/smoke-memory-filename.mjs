@@ -17,7 +17,7 @@ const STORE_DIR = path.join(
 
 const child = spawn(process.execPath, [SERVER], {
   cwd: ROOT,
-  env: { ...process.env, CACHE_MANAGER_STORE_DIR: STORE_DIR },
+  env: { ...process.env, CACHE_MANAGER_STORE_DIR: STORE_DIR, CACHE_MANAGER_WEB_DASHBOARD: "0" },
   stdio: ["pipe", "pipe", "pipe"],
 });
 

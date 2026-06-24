@@ -6,33 +6,12 @@
 // countdown math comes from session-status.mjs and the usage math from
 // transcript-stats.mjs, so the dashboard always agrees with what the MCP server
 // reports.
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import {
-  aggregateUsage,
-  formatStats,
-  resolveTranscriptSessionIds,
-} from "./transcript-stats.mjs";
-import { formatDuration, sessionStatus } from "./session-status.mjs";
-
-const DEFAULT_STORE_DIR = path.join(os.homedir(), ".cache", "cache-manager-mcp");
-const STORE_DIR = process.env.CACHE_MANAGER_STORE_DIR ?? DEFAULT_STORE_DIR;
-const SESSION_FILE = path.join(STORE_DIR, "sessions.json");
-const ALIASES_FILE = path.join(STORE_DIR, "aliases.json");
+import { formatStats } from "./transcript-stats.mjs";
+import { buildRows, STORE_DIR } from "./dashboard-data.mjs";
 
 const REFRESH_SECONDS = positiveNumberEnv(
   "CACHE_MANAGER_DASHBOARD_REFRESH_SECONDS",
   1,
-);
-// Token/cost usage is derived by parsing every in-window transcript, which is
-// far too heavy to do on the 1s countdown tick (the alias-lifetime window
-// reaches back to the alias's creation, so the mtime pre-filter skips almost
-// nothing). Cost doesn't change sub-second, so we recompute it on a slower
-// cadence and cache the result by session id; the fast render reads the cache.
-const USAGE_REFRESH_SECONDS = positiveNumberEnv(
-  "CACHE_MANAGER_DASHBOARD_USAGE_SECONDS",
-  10,
 );
 // Terminal width fallback for non-TTY output (piped / --once), where
 // process.stdout.columns is undefined. Wide enough to fit the full column set
@@ -82,121 +61,9 @@ function positiveNumberEnv(name, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function readJson(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return fallback;
-  }
-}
-
 function color(text, code) {
   if (!IS_TTY || !code) return text;
   return `${code}${text}${RESET}`;
-}
-
-// alias name + alias creation time (the anchor for the lifetime usage window),
-// keyed by session id. First alias wins for a session id, matching the prior
-// behaviour.
-function aliasInfoBySessionId() {
-  const aliases = readJson(ALIASES_FILE, {});
-  const bySessionId = new Map();
-  for (const record of Object.values(aliases)) {
-    if (
-      record?.session_id &&
-      record?.alias &&
-      !bySessionId.has(record.session_id)
-    ) {
-      const createdMs = record.created_at
-        ? Date.parse(record.created_at)
-        : NaN;
-      bySessionId.set(record.session_id, {
-        alias: record.alias,
-        createdMs: Number.isNaN(createdMs) ? null : createdMs,
-      });
-    }
-  }
-  return bySessionId;
-}
-
-// Recomputing transcript usage per session is expensive, so cache it by session
-// id and only refresh on the slow USAGE cadence. Expired sessions are frozen:
-// their window end is pinned at expiry, so the numbers are static and computed
-// exactly once.
-const usageCache = new Map(); // id -> { computedAtMs, frozen, usage }
-
-// Resolve token/cost/turn usage for a session, reusing the cache when fresh.
-// Returns null when the session has no stored cwd — without it we can't map to
-// the right transcript dir, and falling back to the dashboard's own cwd would
-// attribute unrelated transcript usage to this row. A blank cell is honest.
-function usageForSession(session, status, aliasCreatedMs, now, aliasName) {
-  const cwd = session.cwd;
-  if (!cwd) return null;
-
-  const frozen = status.expired;
-  const cached = usageCache.get(session.id);
-  if (cached) {
-    if (cached.frozen) return cached.usage;
-    if (now - cached.computedAtMs < USAGE_REFRESH_SECONDS * 1000) {
-      return cached.usage;
-    }
-  }
-
-  // Window always ends at "now" — same as the MCP server's session_stats — so
-  // the dashboard agrees with what the tool reports. For expired sessions we
-  // freeze the RESULT (compute once, cache forever via the `frozen` flag), not
-  // the window; freezing the window end at expiry would silently diverge from
-  // session_stats and read as $0 for a chat that actually cost money.
-  const windowEndMs = now;
-  const aliasStartMs = aliasCreatedMs ?? session.started_at_ms;
-
-  // Bind to the exact chat(s) this session owns so the row reflects only this
-  // chat's spend, not every chat that ran in this project folder. Empty set ⇒
-  // fall back to the unfiltered time+cwd behaviour (legacy/unattributable rows
-  // still render real numbers rather than $0). Mirrors computeSessionStats.
-  let boundSessionIds;
-  let attributionExact = false;
-  try {
-    const resolved = resolveTranscriptSessionIds({
-      cwd,
-      windowStartMs: aliasStartMs,
-      aliasNames: aliasName ? [aliasName] : [],
-      trackingSessionIds: [session.id],
-      explicitIds: Array.isArray(session.transcript_session_ids)
-        ? session.transcript_session_ids
-        : [],
-    });
-    if (resolved.sessionIds.size > 0) {
-      boundSessionIds = resolved.sessionIds;
-      attributionExact = true;
-    }
-  } catch {
-    boundSessionIds = undefined;
-  }
-
-  let usage;
-  try {
-    usage = {
-      current: aggregateUsage({
-        windowStartMs: session.started_at_ms,
-        windowEndMs,
-        cwd,
-        sessionIds: boundSessionIds,
-      }),
-      alias: aggregateUsage({
-        windowStartMs: aliasStartMs,
-        windowEndMs,
-        cwd,
-        sessionIds: boundSessionIds,
-      }),
-      exact: attributionExact,
-    };
-  } catch {
-    usage = null;
-  }
-
-  usageCache.set(session.id, { computedAtMs: now, frozen, usage });
-  return usage;
 }
 
 function pad(text, width) {
@@ -208,30 +75,6 @@ function pad(text, width) {
     return width <= 1 ? value.slice(0, width) : `${value.slice(0, width - 1)}…`;
   }
   return value + " ".repeat(width - value.length);
-}
-
-// Compact token count: 4_382_433 -> "4.4M", 58_408 -> "58.4k", 812 -> "812".
-function formatTokens(n) {
-  if (!Number.isFinite(n) || n <= 0) return "0";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(Math.round(n));
-}
-
-// Sum of every token tier processed in the window — the "usage" headline.
-function totalTokens(stats) {
-  if (!stats) return 0;
-  return (
-    stats.input_tokens +
-    stats.output_tokens +
-    stats.cache_read_tokens +
-    stats.cache_creation_tokens
-  );
-}
-
-function formatCost(usd) {
-  if (!Number.isFinite(usd)) return "—";
-  return `$${usd.toFixed(2)}`;
 }
 
 // The non-alias columns are fixed width; the alias/label column flexes to fill
@@ -272,117 +115,6 @@ function computeAliasWidth(rows) {
 // Assemble the full ordered column list once the flexible alias width is known.
 function columnsFor(aliasWidth) {
   return [{ key: "alias", label: "ALIAS / LABEL", width: aliasWidth }, ...FIXED_COLUMNS];
-}
-
-function buildRows() {
-  const sessions = readJson(SESSION_FILE, {});
-  const aliasBySessionId = aliasInfoBySessionId();
-  const now = Date.now();
-  return Object.values(sessions)
-    .filter((session) => session?.id)
-    .map((session) => {
-      const status = sessionStatus(session);
-      const aliasInfo = aliasBySessionId.get(session.id);
-      const alias = aliasInfo?.alias;
-      const name = alias
-        ? `${alias} (${session.label || session.id})`
-        : session.label || session.id;
-      const lastAction = session.last_action_at
-        ? session.last_action_at.replace("T", " ").replace(/\.\d+Z$/, "Z")
-        : "—";
-
-      // Explicit turn-in-progress state, computed in session-status.mjs (the
-      // single source of truth). It already self-heals: `running` is false once
-      // the session goes idle or expires, so a forgotten phase:"end" can't pin
-      // the badge on forever. While running we suppress the TTL countdown — the
-      // cache is being kept warm by the work, so a countdown toward expiry is
-      // misleading.
-      const running = status.running;
-
-      // Once expired, the live idle counter is meaningless noise that only
-      // grows. Freeze it at the value it held the moment the TTL lapsed
-      // (expiry time minus the last heartbeat), so it stops updating.
-      const ttlAnchorMs = session.ttl_anchor_ms ?? session.started_at_ms;
-      const expiresAtMs = ttlAnchorMs + session.ttl_ms;
-      const idleMs = status.expired
-        ? Math.max(0, expiresAtMs - session.last_action_at_ms)
-        : status.idle_for_ms;
-
-      // Turn timer: live elapsed (▶ prefix) while running, last completed
-      // turn's duration when idle, em dash when no turn has ever run. No
-      // per-cell coloring — pad() counts raw chars, so an ANSI-wrapped cell
-      // would misalign the column; the whole row is colored by severity later.
-      const turnCell =
-        status.turn_elapsed_ms == null
-          ? "—"
-          : running
-            ? `▶ ${formatDuration(status.turn_elapsed_ms)}`
-            : formatDuration(status.turn_elapsed_ms);
-
-      const displaySeverity = running ? "running" : status.severity;
-
-      // Token/cost/turn tallies derived from transcripts (cached on a slow
-      // cadence). `current` is this chat's window; `alias` is the running tally
-      // since the alias was created. Null when the session has no cwd to map to
-      // a transcript dir — those cells render as "—".
-      const usage = usageForSession(
-        session,
-        status,
-        aliasInfo?.createdMs,
-        now,
-        alias,
-      );
-      const turnsCell = usage
-        ? `${usage.current.turns}/${usage.alias.turns}`
-        : "—";
-      const tokensCell = usage ? formatTokens(totalTokens(usage.alias)) : "—";
-      // A leading "~" flags a row we couldn't bind to a specific chat (no
-      // recorded cache-manager call) — its cost is the project's full
-      // time-window total and may overlap with other such rows. Bound rows are
-      // exact and unmarked. See the footnote.
-      const costCell = usage
-        ? `${usage.exact ? "" : "~"}${formatCost(usage.alias.cost?.estimated_usd)}`
-        : "—";
-      // Savings = what caching avoided: the extra dollars you'd have paid in the
-      // hypothetical 90%-cache-miss scenario (transcript-stats computes this as
-      // hypothetical_high_miss.extra_usd, holding everything else constant).
-      const savingsCell = usage
-        ? formatCost(usage.alias.cost?.hypothetical_high_miss?.extra_usd)
-        : "—";
-
-      return {
-        severity: displaySeverity,
-        checkpointSuggested: status.checkpoint_suggested,
-        // Raw epoch ms of the last heartbeat, for sorting the table most-recent
-        // first. Falls back to -Infinity so rows with no recorded action sink
-        // to the bottom rather than jumping ahead of real activity.
-        lastActionMs: Number.isFinite(session.last_action_at_ms)
-          ? session.last_action_at_ms
-          : -Infinity,
-        // Raw usage (current + alias-lifetime stats) for the optional detail
-        // panel; null when the session has no cwd to map to a transcript dir.
-        usage,
-        cells: {
-          alias: name,
-          ttl: running ? "▶ running" : formatDuration(status.time_remaining_ms),
-          turn: turnCell,
-          idle: formatDuration(idleMs),
-          turns: turnsCell,
-          tokens: tokensCell,
-          cost: costCell,
-          savings: savingsCell,
-          severity: displaySeverity,
-          last: lastAction,
-        },
-      };
-    })
-    // Most recent activity first; ties (incl. no-action rows) fall back to alias
-    // order so the ordering stays stable across refreshes.
-    .sort(
-      (a, b) =>
-        b.lastActionMs - a.lastActionMs ||
-        a.cells.alias.localeCompare(b.cells.alias),
-    );
 }
 
 // Full per-session usage breakdown, identical in detail to the MCP checkpoint
