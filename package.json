@@ -1,6 +1,6 @@
 {
   "name": "@dannyma/cache-manager-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Standalone MCP server for prompt TTL tracking, handoff memories, aliases, and transcript-derived usage stats.",
   "type": "module",
   "bin": {
@@ -18,7 +18,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node scripts/smoke-mcp.mjs && node scripts/smoke-notifier.mjs && node scripts/smoke-dashboard.mjs && node scripts/smoke-web-dashboard.mjs && node scripts/smoke-dashboard-failover.mjs && node scripts/smoke-checkpoint-suggestion.mjs && node scripts/smoke-turn-timer.mjs && node scripts/smoke-memory-filename.mjs && node scripts/smoke-attribution.mjs",
+    "test": "node scripts/smoke-mcp.mjs && node scripts/smoke-notifier.mjs && node scripts/smoke-dashboard.mjs && node scripts/smoke-web-dashboard.mjs && node scripts/smoke-dashboard-failover.mjs && node scripts/smoke-checkpoint-suggestion.mjs && node scripts/smoke-turn-timer.mjs && node scripts/smoke-memory-filename.mjs && node scripts/smoke-attribution.mjs && node scripts/smoke-project-groups.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "smoke:notifier": "node scripts/smoke-notifier.mjs",
     "smoke:dashboard": "node scripts/smoke-dashboard.mjs",
@@ -28,6 +28,7 @@
     "smoke:turn": "node scripts/smoke-turn-timer.mjs",
     "smoke:filename": "node scripts/smoke-memory-filename.mjs",
     "smoke:attribution": "node scripts/smoke-attribution.mjs",
+    "smoke:groups": "node scripts/smoke-project-groups.mjs",
     "start": "node server/cache-manager.mjs",
     "notifier": "node server/cache-manager-notifier.mjs",
     "dashboard": "node server/cache-manager-dashboard.mjs",

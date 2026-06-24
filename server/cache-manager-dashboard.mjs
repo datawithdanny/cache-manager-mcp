@@ -7,7 +7,12 @@
 // transcript-stats.mjs, so the dashboard always agrees with what the MCP server
 // reports.
 import { formatStats } from "./transcript-stats.mjs";
-import { buildRows, STORE_DIR } from "./dashboard-data.mjs";
+import {
+  buildRows,
+  groupRowsByProject,
+  formatCost,
+  STORE_DIR,
+} from "./dashboard-data.mjs";
 
 const REFRESH_SECONDS = positiveNumberEnv(
   "CACHE_MANAGER_DASHBOARD_REFRESH_SECONDS",
@@ -183,15 +188,30 @@ function render() {
   } else {
     const columns = columnsFor(computeAliasWidth(rows));
     const header = columns.map((c) => pad(c.label, c.width)).join(COL_GAP);
+    const headerWidth = header.length;
     lines.push(color(header, BOLD));
-    lines.push(color("─".repeat(header.length), DIM));
+    lines.push(color("─".repeat(headerWidth), DIM));
 
-    for (const row of rows) {
-      const code = SEVERITY_COLORS[row.severity] ?? "";
-      const line = columns
-        .map((c) => pad(row.cells[c.key], c.width))
-        .join(COL_GAP);
-      lines.push(color(line, code));
+    // Rows are bucketed by project group: a header per group with its
+    // cost/savings subtotal, then the group's rows (preserving recent-first
+    // order within the group). Ungrouped sorts last.
+    for (const grp of groupRowsByProject(rows)) {
+      lines.push(
+        color(
+          pad(
+            `▸ ${grp.group}  ·  cost ${formatCost(grp.cost)} · saved ${formatCost(grp.savings)} · ${grp.rows.length} session(s)`,
+            headerWidth,
+          ),
+          BOLD,
+        ),
+      );
+      for (const row of grp.rows) {
+        const code = SEVERITY_COLORS[row.severity] ?? "";
+        const line = columns
+          .map((c) => pad(row.cells[c.key], c.width))
+          .join(COL_GAP);
+        lines.push(color(line, code));
+      }
     }
 
     const counts = rows.reduce((acc, row) => {
@@ -220,7 +240,7 @@ function render() {
     const inexact = rows.filter((row) => row.usage && !row.usage.exact).length;
     lines.push(
       color(
-        "TURNS = this chat / alias lifetime; TOKENS, COST & SAVINGS are the alias tally (since the alias was created), attributed to the exact chat(s) bound to this session. SAVINGS = extra cost avoided by caching vs a 90% cache-miss.",
+        "Rows are grouped by project group (▸ header shows the group's cost/savings subtotal); untagged aliases fall under Ungrouped. TURNS = this chat / alias lifetime; TOKENS, COST & SAVINGS are the alias tally (since the alias was created), attributed to the exact chat(s) bound to this session. SAVINGS = extra cost avoided by caching vs a 90% cache-miss.",
         DIM,
       ),
     );

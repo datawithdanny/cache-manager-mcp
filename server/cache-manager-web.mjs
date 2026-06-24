@@ -243,6 +243,14 @@ const PAGE_HTML = `<!doctype html>
   .stat.run .v { color: var(--run); }
   .stat.gold .v { color: #c98a13; }
 
+  .group { margin-top: 18px; }
+  .group-head {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 4px 2px 0; border-bottom: 1.5px solid var(--stroke);
+  }
+  .group-head .gname { font-size: 15px; font-weight: 700; color: var(--green); }
+  .group-head .gsub { font-size: 12.5px; color: var(--green-muted); }
+  .group-head .gsub .saved { color: #c98a13; font-weight: 700; }
   .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); margin-top: 14px; }
   .card {
     background: var(--card); border: 1.5px solid var(--stroke); border-radius: 16px;
@@ -406,6 +414,52 @@ function grid(rows) {
   return '<div class="grid">' + rows.map(card).join('') + '</div>';
 }
 
+// Mirror of server-side groupRowsByProject: bucket by projectGroup (null ->
+// "Ungrouped"), subtotal alias-lifetime cost + savings per bucket, named groups
+// alpha with Ungrouped last.
+const UNGROUPED = 'Ungrouped';
+function groupRows(rows) {
+  const buckets = new Map();
+  for (const r of rows) {
+    const key = (r && r.projectGroup) || UNGROUPED;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(r);
+  }
+  const out = [];
+  for (const [group, groupRows] of buckets) {
+    let cost = 0, savings = 0;
+    for (const r of groupRows) {
+      const c = r && r.usage && r.usage.alias && r.usage.alias.cost;
+      if (!c) continue;
+      cost += c.estimated_usd || 0;
+      savings += (c.hypothetical_high_miss && c.hypothetical_high_miss.extra_usd) || 0;
+    }
+    out.push({ group, rows: groupRows, cost, savings });
+  }
+  return out.sort((a, b) => {
+    if (a.group === UNGROUPED) return 1;
+    if (b.group === UNGROUPED) return -1;
+    return a.group.localeCompare(b.group);
+  });
+}
+
+// Render rows partitioned into project-group sections, each with a header
+// carrying the group's cost/savings subtotal. Subtotals and the session count
+// always reflect the FULL group membership (the rows arg), so they match the
+// terminal dashboard and sum to the grand total even when some expired cards are
+// collapsed; hiddenIds only omits those cards from display, never the maths.
+function groupedGrid(rows, hiddenIds) {
+  return groupRows(rows).map(g => {
+    const visible = g.rows.filter(r => !hiddenIds.has(r.sessionId));
+    return '<div class="group"><div class="group-head">'
+      + '<span class="gname">' + esc(g.group) + '</span>'
+      + '<span class="gsub">' + g.rows.length + ' session' + (g.rows.length === 1 ? '' : 's')
+      + ' · cost $' + g.cost.toFixed(2)
+      + ' · <span class="saved">saved $' + g.savings.toFixed(2) + '</span></span>'
+      + '</div>' + (visible.length ? grid(visible) : '') + '</div>';
+  }).join('');
+}
+
 function summary(rows) {
   const n = rows.length;
   const running = rows.filter(r => r.running).length;
@@ -467,20 +521,18 @@ async function onCardActivate(sid) {
 function render(rows) {
   ROWS = {};
   for (const r of rows) ROWS[r.sessionId] = r;
-  const active = rows.filter(r => !r.expired);
   const expired = rows.filter(r => r.expired);
-  const mainExpired = expired.slice(0, 1);     // keep the most recent expired
-  const hidden = expired.slice(1);             // the rest collapse
-  const main = active.concat(mainExpired);
+  const hidden = expired.slice(1);             // older expired collapse by default
+  // Card visibility only — group subtotals always count the full membership.
+  // When expanded, hidden cards reappear inline in their own group sections.
+  const hiddenIds = new Set(showExpired ? [] : hidden.map(r => r.sessionId));
 
-  let html = grid(main);
+  let html = groupedGrid(rows, hiddenIds);
   if (hidden.length) {
     const label = showExpired
       ? 'Hide ' + hidden.length + ' older expired'
       : 'See ' + hidden.length + ' more expired';
-    html += '<div class="seemore"><button id="toggle-expired">' + label + '</button>'
-      + (showExpired ? grid(hidden) : '')
-      + '</div>';
+    html += '<div class="seemore"><button id="toggle-expired">' + label + '</button></div>';
   }
   document.getElementById('content').innerHTML = html;
 }

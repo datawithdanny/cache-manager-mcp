@@ -135,9 +135,9 @@ Available tools:
 - `latest_memory`: return the newest memory, optionally filtered by `session_id` or `alias`.
 - `list_memories`: list saved memories, optionally filtered by `session_id` or `alias`.
 - `search_memories`: keyword-search titles, tags, session IDs, and memory content.
-- `set_alias`: manually map a human-friendly alias to a session ID.
+- `set_alias`: manually map a human-friendly alias to a session ID. Accepts an optional `project_group` to file the alias under a project (see [Project groups](#project-groups)).
 - `resolve_alias`: resolve an alias to its session ID.
-- `list_aliases`: list known aliases.
+- `list_aliases`: list known aliases (each record includes its `project_group`, if set).
 - `session_stats`: report transcript-derived token/cache usage and estimated USD cost for the tracking session and the alias's whole lifetime. See [Usage stats and cost](#usage-stats-and-cost).
 - `prune_memories`: delete accumulating handoff memories per the retention policy. By default keeps the newest memory per alias and deletes non-latest memories older than 30 days. Also runs automatically on server startup. See [Memory retention](#memory-retention).
 
@@ -411,6 +411,27 @@ Session and alias indexes are stored at:
 ~/.cache/cache-manager-mcp/aliases.json
 ```
 
+## Project groups
+
+Aliases can be filed under an optional **project group** so related threads are
+tracked together and their cost/savings roll up per project rather than only as
+one overall total.
+
+Set a group when you start or tag a thread:
+
+- `resume_or_start` / `start_session`: pass `project_group: "acme-app"`.
+- `set_alias`: pass `project_group: "acme-app"` to (re)tag an existing alias.
+
+The group is **sticky** — once set it persists across later calls that omit it;
+pass an empty string to clear it. It is stored as `project_group` on each alias
+record in `aliases.json`; pre-existing aliases (and any untagged alias) are
+treated as **Ungrouped**.
+
+Both dashboards then group their rows by project group and show a per-group
+**cost** and **savings** subtotal (savings = the extra cost a 90%-cache-miss run
+would have incurred, summed over the group's sessions). The overall
+"Saved by cache" total is still shown alongside the per-group breakdown.
+
 ## Memory retention
 
 Handoff memories accumulate over time, so the server prunes them automatically.
@@ -575,7 +596,7 @@ The MCP server also launches a **web dashboard** automatically on startup — a 
 http://127.0.0.1:41734
 ```
 
-It serves a single page (`/`) that polls a JSON endpoint (`/api/sessions`) and renders one card per session — alias/label, TTL/turn/idle, turns, tokens, cost, savings, severity, and last activity — plus a summary strip (sessions, active, running, total cost, saved-by-cache). It is **read-only** and reuses the exact same row-building logic as the terminal dashboard (`server/dashboard-data.mjs`), so the numbers always agree with the `status`/`session_stats` tools.
+It serves a single page (`/`) that polls a JSON endpoint (`/api/sessions`) and renders one card per session — alias/label, TTL/turn/idle, turns, tokens, cost, savings, severity, and last activity — grouped into [project-group](#project-groups) sections each with a cost/savings subtotal, plus a summary strip (sessions, active, running, total cost, saved-by-cache). It is **read-only** and reuses the exact same row-building logic as the terminal dashboard (`server/dashboard-data.mjs`), so the numbers always agree with the `status`/`session_stats` tools.
 
 Each state has its own accent colour, with a legend at the top so it is obvious at a glance: **running** (a brighter green than the resting "ok" green, with a pulsing badge), **idle** (amber), **near ttl** (orange), and **expired** (red). To keep the main view focused on live work, **expired** aliases are collapsed behind a **"See N more expired"** toggle — only the single most-recent expired alias is kept in the main grid (handy if you need to jump back into the last thing you were doing).
 

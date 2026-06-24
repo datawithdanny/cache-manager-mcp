@@ -160,8 +160,29 @@ try {
     method: "tools/call",
     params: { name: "session_stats", arguments: { session_id: "smoke-test" } },
   });
+  // Project-group round-trip: set_alias stores project_group, list_aliases
+  // returns it on the record.
+  send({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "tools/call",
+    params: {
+      name: "set_alias",
+      arguments: {
+        alias: "smoke-test",
+        session_id: "smoke-test",
+        project_group: "smoke-group",
+      },
+    },
+  });
+  send({
+    jsonrpc: "2.0",
+    id: 7,
+    method: "tools/call",
+    params: { name: "list_aliases", arguments: {} },
+  });
 
-  const responses = await waitForResponses(5);
+  const responses = await waitForResponses(7);
   const byId = new Map(responses.map((response) => [response.id, response]));
 
   assert.equal(byId.get(1)?.result?.serverInfo?.name, "cache-manager");
@@ -212,6 +233,23 @@ try {
   );
   // And the attributed usage reflects that one chat's single turn.
   assert.equal(byAlias.current_session?.turns, 1, "attributed to the bound turn");
+
+  // Project-group round-trip.
+  const setAlias = JSON.parse(byId.get(6)?.result?.content?.[0]?.text ?? "{}");
+  assert.equal(
+    setAlias.alias?.project_group,
+    "smoke-group",
+    "set_alias should persist project_group",
+  );
+  const listed = JSON.parse(byId.get(7)?.result?.content?.[0]?.text ?? "{}");
+  const smokeRecord = (listed.aliases ?? []).find(
+    (a) => a.alias === "smoke-test",
+  );
+  assert.equal(
+    smokeRecord?.project_group,
+    "smoke-group",
+    "list_aliases should surface project_group",
+  );
 
   console.log("MCP smoke test passed");
 } finally {

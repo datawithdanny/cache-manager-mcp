@@ -85,6 +85,9 @@ function aliasInfoBySessionId() {
       bySessionId.set(record.session_id, {
         alias: record.alias,
         createdMs: Number.isNaN(createdMs) ? null : createdMs,
+        // Optional project-group tag. Missing on pre-feature records; readers
+        // treat null as "Ungrouped".
+        projectGroup: record.project_group ?? null,
       });
     }
   }
@@ -320,6 +323,9 @@ export function buildRows() {
       return {
         sessionId: session.id,
         alias: alias ?? null,
+        // Project-group tag for the alias, or null (rendered as "Ungrouped").
+        // Lets the dashboards bucket rows and subtotal cost/savings per group.
+        projectGroup: aliasInfo?.projectGroup ?? null,
         label,
         severity: displaySeverity,
         hasMemory,
@@ -367,4 +373,42 @@ export function buildRows() {
         b.lastActionMs - a.lastActionMs ||
         a.cells.alias.localeCompare(b.cells.alias),
     );
+}
+
+// Label for rows whose alias carries no project group. Pre-feature aliases.json
+// records (and any alias never tagged) fall here.
+export const UNGROUPED_LABEL = "Ungrouped";
+
+// Bucket dashboard rows by their alias's project group, preserving each
+// bucket's incoming row order. Each bucket carries `cost` and `savings`
+// subtotals summed from the alias-lifetime usage of its members — savings is
+// the additive `hypothetical_high_miss.extra_usd` already computed per session,
+// so a group subtotal is just its members' sum. Rows with a null/missing group
+// collect under UNGROUPED_LABEL; missing usage contributes 0. Named groups are
+// ordered alphabetically with Ungrouped always last.
+export function groupRowsByProject(rows) {
+  const buckets = new Map();
+  for (const row of rows) {
+    const key = row?.projectGroup || UNGROUPED_LABEL;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(row);
+  }
+  const round2 = (n) => Math.round(n * 1e4) / 1e4;
+  const groups = [];
+  for (const [group, groupRows] of buckets) {
+    let cost = 0;
+    let savings = 0;
+    for (const row of groupRows) {
+      const c = row?.usage?.alias?.cost;
+      if (!c) continue;
+      cost += c.estimated_usd || 0;
+      savings += c.hypothetical_high_miss?.extra_usd || 0;
+    }
+    groups.push({ group, rows: groupRows, cost: round2(cost), savings: round2(savings) });
+  }
+  return groups.sort((a, b) => {
+    if (a.group === UNGROUPED_LABEL) return 1;
+    if (b.group === UNGROUPED_LABEL) return -1;
+    return a.group.localeCompare(b.group);
+  });
 }

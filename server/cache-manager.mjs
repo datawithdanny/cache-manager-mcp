@@ -402,6 +402,11 @@ const tools = [
           type: "string",
           description: "Human-readable label for the tracked conversation.",
         },
+        project_group: {
+          type: "string",
+          description:
+            "Optional project group for this alias, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set.",
+        },
         ttl_seconds: {
           type: "number",
           description: "Prompt TTL in seconds. Defaults to 300.",
@@ -588,6 +593,11 @@ const tools = [
           type: "string",
           description: "Human-readable label for the tracked conversation.",
         },
+        project_group: {
+          type: "string",
+          description:
+            "Optional project group for this alias, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set.",
+        },
         ttl_seconds: {
           type: "number",
           description: "Prompt TTL in seconds. Defaults to 300.",
@@ -764,6 +774,11 @@ const tools = [
           type: "string",
           description: "Optional description/title for the alias.",
         },
+        project_group: {
+          type: "string",
+          description:
+            "Optional project group to file this alias under, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set; pass an empty string to clear it.",
+        },
       },
     },
   },
@@ -914,14 +929,22 @@ function getSession(args = {}, create = false) {
   return { sessions, session, id };
 }
 
-function upsertAlias(alias, sessionId, title) {
+function upsertAlias(alias, sessionId, title, projectGroup) {
   if (!alias) return null;
   const aliases = readAliases();
   const previous = aliases[alias] || {};
+  // Group an alias under an optional project group for dashboard grouping and
+  // per-group cost/savings aggregation. Sticky: a later call that omits the
+  // group keeps the previously set one; pass an empty string to clear it.
+  const nextGroup =
+    projectGroup === undefined
+      ? (previous.project_group ?? null)
+      : projectGroup || null;
   const record = {
     alias,
     session_id: sessionId,
     title: title || previous.title || alias,
+    project_group: nextGroup,
     created_at: previous.created_at || nowIso(),
     updated_at: nowIso(),
   };
@@ -973,7 +996,12 @@ function startSession(args = {}) {
   const session = buildSession(args);
   sessions[session.id] = session;
   writeSessions(sessions);
-  const alias = upsertAlias(args.alias, session.id, args.label);
+  const alias = upsertAlias(
+    args.alias,
+    session.id,
+    args.label,
+    args.project_group,
+  );
   return { session, alias, status: sessionStatus(session) };
 }
 
@@ -1013,7 +1041,7 @@ function saveMemory(args = {}) {
     .filter(Boolean)
     .join("\n");
   fs.writeFileSync(target, body);
-  const alias = upsertAlias(args.alias, sessionId, title);
+  const alias = upsertAlias(args.alias, sessionId, title, args.project_group);
   return {
     ok: true,
     path: target,
@@ -1416,7 +1444,12 @@ function callTool(name, args = {}) {
   }
 
   if (name === "set_alias") {
-    const alias = upsertAlias(args.alias, args.session_id, args.title);
+    const alias = upsertAlias(
+      args.alias,
+      args.session_id,
+      args.title,
+      args.project_group,
+    );
     return textResult({ ok: true, alias });
   }
 
