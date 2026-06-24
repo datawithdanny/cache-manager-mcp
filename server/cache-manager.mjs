@@ -45,7 +45,10 @@ function numberEnv(name, fallback) {
 // alias is protected by default so resume_or_start / latest_memory can always
 // restore a thread, no matter how old its last checkpoint is.
 const RETENTION_DAYS = numberEnv("CACHE_MANAGER_RETENTION_DAYS", 30);
-const KEEP_LATEST_PER_ALIAS = boolEnv("CACHE_MANAGER_KEEP_LATEST_PER_ALIAS", true);
+const KEEP_LATEST_PER_ALIAS = boolEnv(
+  "CACHE_MANAGER_KEEP_LATEST_PER_ALIAS",
+  true,
+);
 const PRUNE_ON_STARTUP = boolEnv("CACHE_MANAGER_PRUNE_ON_STARTUP", true);
 
 fs.mkdirSync(MEMORY_DIR, { recursive: true });
@@ -183,7 +186,8 @@ function pruneMemories(options = {}) {
     const key = memoryGroupKey(entry);
     const ts = memoryTimeMs(entry);
     const current = newestByGroup.get(key);
-    if (!current || ts > current.ts) newestByGroup.set(key, { file: entry.file, ts });
+    if (!current || ts > current.ts)
+      newestByGroup.set(key, { file: entry.file, ts });
   }
 
   const deleted = [];
@@ -345,10 +349,7 @@ function countdownText(status) {
   }
 
   if (status.checkpoint_suggested) {
-    lines.push(
-      "",
-      `⛳ Checkpoint suggested: ${status.checkpoint_reason}.`,
-    );
+    lines.push("", `⛳ Checkpoint suggested: ${status.checkpoint_reason}.`);
   }
 
   lines.push("", status.recommendation);
@@ -758,8 +759,7 @@ const tools = [
       properties: {
         alias: {
           type: "string",
-          description:
-            "Human-friendly thread name, e.g. 'my-project-thread'.",
+          description: "Human-friendly thread name, e.g. 'my-project-thread'.",
         },
         session_id: {
           type: "string",
@@ -900,7 +900,8 @@ function getSession(args = {}, create = false) {
       idle_ms:
         Math.max(1, Number(args.idle_seconds || 240)) * 1000 || DEFAULT_IDLE_MS,
       turn_max_ms:
-        Math.max(1, Number(args.turn_max_seconds)) * 1000 || DEFAULT_MAX_TURN_MS,
+        Math.max(1, Number(args.turn_max_seconds)) * 1000 ||
+        DEFAULT_MAX_TURN_MS,
       started_at_ms: started,
       ttl_anchor_ms: started,
       last_action_at_ms: started,
@@ -995,7 +996,10 @@ function saveMemory(args = {}) {
   // collide with the real `.md` we append, producing names like `...claude.md.md`.
   // Collapse dots to dashes in the title portion only — alias→session_id
   // resolution uses slug() elsewhere and is untouched by this.
-  const titleSlug = slug(title).replace(/\./g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  const titleSlug = slug(title)
+    .replace(/\./g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
   const file = `${createdAt.replace(/[:.]/g, "-")}-${slug(sessionId)}-${titleSlug}.md`;
   const target = path.join(MEMORY_DIR, file);
   const tags = Array.isArray(args.tags) ? args.tags : [];
@@ -1239,7 +1243,11 @@ function callTool(name, args = {}) {
     const status = sessionStatus(session);
     const result = { ok: true, status };
     if (status.checkpoint_suggested) {
-      result.checkpoint_suggestion = checkpointSuggestion(args, session, status);
+      result.checkpoint_suggestion = checkpointSuggestion(
+        args,
+        session,
+        status,
+      );
     }
     return textResult(result);
   }
@@ -1319,8 +1327,7 @@ function callTool(name, args = {}) {
     }
     const started = restart
       ? startSession({
-          checkpoint_after_actions:
-            prevSession?.checkpoint_after_actions,
+          checkpoint_after_actions: prevSession?.checkpoint_after_actions,
           checkpoint_after_minutes: prevSession?.checkpoint_after_ms
             ? prevSession.checkpoint_after_ms / 60000
             : undefined,
@@ -1441,7 +1448,9 @@ function callTool(name, args = {}) {
     // The manual tool previews by default; callers opt in to deletion with
     // dry_run:false. (The startup prune calls pruneMemories() directly, so it
     // is unaffected and still deletes for real.)
-    return textResult(pruneMemories({ ...args, dry_run: args.dry_run ?? true }));
+    return textResult(
+      pruneMemories({ ...args, dry_run: args.dry_run ?? true }),
+    );
   }
 
   throw new Error(`unknown tool: ${name}`);
