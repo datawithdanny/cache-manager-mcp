@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="404" viewBox="0 0 800 404" role="img" aria-label="Get started in 3 steps: install, add to MCP client config, let your agent call the tools">
+  <defs>
+    <style>
+      .hd   { font-family: 'Chalkboard SE','Comic Neue','Trebuchet MS','Segoe UI',sans-serif; font-weight: 700; }
+      .step { font-family: 'Chalkboard SE','Comic Neue','Trebuchet MS','Segoe UI',sans-serif; font-weight: 700; }
+      .num  { font-family: 'Trebuchet MS','Segoe UI',sans-serif; font-weight: 700; }
+      .code { font-family: 'SFMono-Regular','Consolas','Liberation Mono',monospace; }
+      .sub  { font-family: 'Trebuchet MS','Segoe UI',sans-serif; }
+    </style>
+    <filter id="ds2" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#5a7766" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <!-- card -->
+  <rect x="2" y="2" width="796" height="400" rx="22" fill="#ffffff" stroke="#dfe6ef" stroke-width="2"/>
+
+  <!-- heading -->
+  <text class="hd" x="40" y="50" font-size="20" fill="#4f7b66">Get started in 3 steps</text>
+
+  <!-- vertical connector behind badges -->
+  <line x1="60" y1="116" x2="60" y2="336" stroke="#cdd8d0" stroke-width="2.4"/>
+
+  <!-- STEP 1 -->
+  <g filter="url(#ds2)"><circle cx="60" cy="116" r="19" fill="#5d8a73"/></g>
+  <text class="num" x="60" y="123" text-anchor="middle" font-size="20" fill="#f0f4f0">1</text>
+  <text class="step" x="96" y="110" font-size="17" fill="#33415c">Install the server</text>
+  <rect x="96" y="124" width="660" height="34" rx="8" fill="#f2f5f2" stroke="#d5ddd7" stroke-width="1.5"/>
+  <text class="code" x="110" y="146" font-size="14" fill="#3a4a41">npx -y @dannyma/cache-manager-mcp</text>
+  <text class="sub" x="96" y="180" font-size="12.5" fill="#6f8579">or install globally:  npm install -g @dannyma/cache-manager-mcp</text>
+
+  <!-- STEP 2 -->
+  <g filter="url(#ds2)"><circle cx="60" cy="226" r="19" fill="#5d8a73"/></g>
+  <text class="num" x="60" y="233" text-anchor="middle" font-size="20" fill="#f0f4f0">2</text>
+  <text class="step" x="96" y="220" font-size="17" fill="#33415c">Add it to your MCP client config</text>
+  <rect x="96" y="234" width="660" height="58" rx="8" fill="#f2f5f2" stroke="#d5ddd7" stroke-width="1.5"/>
+  <text class="code" x="110" y="256" font-size="13" fill="#3a4a41">"cache_manager": { "command": "npx",</text>
+  <text class="code" x="110" y="278" font-size="13" fill="#3a4a41">                   "args": ["-y", "@dannyma/cache-manager-mcp"] }</text>
+
+  <!-- STEP 3 -->
+  <g filter="url(#ds2)"><circle cx="60" cy="336" r="19" fill="#5d8a73"/></g>
+  <text class="num" x="60" y="343" text-anchor="middle" font-size="20" fill="#f0f4f0">3</text>
+  <text class="step" x="96" y="330" font-size="17" fill="#33415c">Let your agent call the tools</text>
+  <rect x="96" y="344" width="660" height="34" rx="8" fill="#eef6f1" stroke="#bfe0cd" stroke-width="1.5"/>
+  <text class="code" x="110" y="366" font-size="14" fill="#0f7a57">resume_or_start  &#8594;  heartbeat  &#8594;  checkpoint</text>
+</svg>

@@ -369,6 +369,21 @@ function textResult(payload) {
   };
 }
 
+// Canonical agent workflow, surfaced to MCP clients via the `instructions`
+// field of the initialize result. Conforming hosts (e.g. Claude Code, Zed)
+// inject this into the model's context, so the tool works out of the box with
+// no AGENTS.md/CLAUDE.md copying. AGENTS.md mirrors this text word-for-word as a
+// fallback for clients that ignore server instructions. Keep it tight — it is
+// added to context every session.
+const SERVER_INSTRUCTIONS = [
+  "Cache Manager keeps per-chat context so agents can resume cheaply across sessions. Workflow:",
+  "1. RESUME — at the start of a chat, call resume_or_start with a stable `alias` (one per project/task). If it returns a memory, read it as restart context before anything else.",
+  "2. HEARTBEAT — at the start of each chat request (a new user prompt), call heartbeat with phase:'start' so the dashboard shows the chat 'running'. When you finish answering that request (after ALL the turns/tool calls needed to respond), call heartbeat with phase:'end' immediately before your final response text so the idle/TTL countdown resumes. Optionally send plain heartbeat pings (phase:'progress') after meaningful steps in between. This feeds the external dashboard; it is required for the dashboard, not a checkpoint trigger.",
+  "3. CHECKPOINT at natural cut points — when you finish a substantial unit of work (a logical stopping point, usually the end of a long task), call checkpoint with a compact summary (goal, what changed, decisions, next steps). Do NOT checkpoint mid-task or merely because time has passed.",
+  "4. RESUME LATER — in a new chat, call resume_or_start with the same alias to restore the latest checkpoint.",
+  "TTL/idle are dashboard and cost-visibility metrics only — never a reason for the agent to checkpoint.",
+].join("\n");
+
 const tools = [
   {
     name: "start_session",
@@ -430,7 +445,7 @@ const tools = [
   {
     name: "heartbeat",
     description:
-      "Record agent activity for a tracked session and return TTL/idle status. Pass phase:'start' before a long-running turn to mark the chat in-progress (starts a turn timer), phase:'end' immediately before the final response text to close it, or omit phase (defaults to 'progress') for a plain activity ping. When enough work has accrued since the last checkpoint, the response also includes a checkpoint_suggestion bundle (example handoff prompt + usage/cost stats) so you can checkpoint in one shot.",
+      "Record agent activity for a tracked session (drives the external dashboard's live view). Call with phase:'start' at the start of each chat request (a new user prompt) to mark the chat 'running' and start the turn timer; call with phase:'end' immediately before the final response text — after all turns/tool calls answering that request — to close it so the idle/TTL countdown resumes; or omit phase (defaults to 'progress') for a plain activity ping after meaningful steps. When a substantial chunk of work has accrued since the last checkpoint, the response also includes a checkpoint_suggestion bundle (example handoff prompt + usage/cost stats) so you can checkpoint in one shot. TTL/idle here are dashboard metrics, not a checkpoint trigger.",
     inputSchema: {
       type: "object",
       properties: {
@@ -465,7 +480,7 @@ const tools = [
   {
     name: "status",
     description:
-      "Check whether a session is near TTL expiry or idle enough to summarize.",
+      "Return a session's current TTL/idle/turn metrics — the same view the external dashboard renders. Informational only: TTL/idle are not a checkpoint trigger.",
     inputSchema: {
       type: "object",
       properties: {
@@ -560,7 +575,7 @@ const tools = [
   {
     name: "resume_or_start",
     description:
-      "Restore the latest memory for an alias/session if available, then start a fresh TTL tracking session in one call.",
+      "Restore the latest memory for an alias/session if available, then start a fresh TTL tracking session in one call. Prefer this at the start of every chat; if it returns a memory, read it as restart context before doing other work.",
     inputSchema: {
       type: "object",
       properties: {
@@ -616,7 +631,7 @@ const tools = [
   {
     name: "checkpoint",
     description:
-      "Save a compact handoff memory and optionally start a fresh TTL session. Use near TTL expiry or before risky context loss.",
+      "Save a compact handoff memory and optionally start a fresh TTL session. Call this when you finish a substantial unit of work — a natural cut point, usually the end of a long task — so the next session can resume cheaply. Do NOT checkpoint mid-task or merely because time has passed. The summary should capture goal, what changed, decisions, and next steps.",
     inputSchema: {
       type: "object",
       required: ["summary"],
@@ -1470,6 +1485,7 @@ function handleRequest(request) {
           protocolVersion: params.protocolVersion || "2024-11-05",
           capabilities: { tools: {} },
           serverInfo: { name: "cache-manager", version: "0.1.0" },
+          instructions: SERVER_INSTRUCTIONS,
         },
       });
       return;

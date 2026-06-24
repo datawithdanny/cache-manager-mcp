@@ -1,8 +1,85 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="Cache Manager MCP — stop re-explaining context, keep your cache warm, save tokens and dollars" width="100%">
+</p>
+
 # Cache Manager MCP Server
 
-> ⏳ Stop burning tokens re-explaining context. Cache Manager gives your AI agents short-lived prompt TTLs, compact session handoffs, and real cost visibility — all over the Model Context Protocol.
-
 A standalone [Model Context Protocol (MCP)] server for agent prompt TTL tracking, conversation handoff memories, aliases, and transcript-derived usage stats. It runs in any stdio-capable MCP client. An optional, thin Zed editor-extension wrapper is provided from the repository root.
+
+## Installation
+
+<p align="center">
+  <img src="assets/install-guide.svg" alt="Get started in 3 steps: 1) install with npx -y @dannyma/cache-manager-mcp, 2) add it to your MCP client config, 3) let your agent call resume_or_start → heartbeat → checkpoint" width="720">
+</p>
+
+Cache Manager is published on npm as [`@dannyma/cache-manager-mcp`](https://www.npmjs.com/package/@dannyma/cache-manager-mcp) and runs in any stdio-capable MCP client. The quickest path needs no install at all.
+
+### Quickest: point your client at `npx`
+
+Drop this into your MCP client config and you're done — `npx` fetches and runs the latest version on demand:
+
+```json
+{
+  "mcpServers": {
+    "cache_manager": {
+      "command": "npx",
+      "args": ["-y", "@dannyma/cache-manager-mcp"]
+    }
+  }
+}
+```
+
+### Or install globally
+
+```sh
+npm install -g @dannyma/cache-manager-mcp
+```
+
+Then configure your client to launch the installed binary:
+
+```json
+{
+  "mcpServers": {
+    "cache_manager": {
+      "command": "cache-manager-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+The server communicates over stdio and supports standard MCP `Content-Length` framing. It also accepts newline-delimited JSON for local smoke tests.
+
+### From source (for development)
+
+Clone the repo, install, and run the server directly:
+
+```sh
+npm install
+npm test
+node server/cache-manager.mjs
+```
+
+Then point your client at an absolute path to the local server:
+
+```json
+{
+  "mcpServers": {
+    "cache_manager": {
+      "command": "node",
+      "args": ["/absolute/path/to/cache-manager/server/cache-manager.mjs"]
+    }
+  }
+}
+```
+
+## How it flows in a chat
+
+The diagram below shows the logical flow of `cache_manager` tool calls across a regular agent chat: the agent resumes context once, heartbeats through the turn loop, and checkpoints at natural cut points — when a substantial work item is finished — so a fresh chat can resume cheaply.
+
+<p align="center">
+  <img src="assets/flow-dag.svg" alt="Tool-call flow: agent chat begins → resume_or_start → heartbeat/status loop every turn → when a substantial work item is finished, handoff_prompt → checkpoint → fresh chat resumes" width="640">
+</p>
 
 ## What it does
 
@@ -20,100 +97,20 @@ The `cache_manager` MCP server exposes tools agents can call to:
 - map human-friendly aliases to stable session IDs for older chat/thread restore flows
 - report transcript-derived token/cache usage and an estimated USD cost for the current session and the alias's whole lifetime
 
-## Important limitation
+## How the agent uses it
 
-MCP servers are request-driven: they cannot automatically observe every host-client conversation, intercept prompts, clear a model's context window, open a fresh conversation, or force an agent to summarize unless the MCP client/agent chooses to call a tool.
+The workflow ships **with the server**: it is sent to conforming MCP clients via the `instructions` field of the `initialize` response and reinforced in every tool's description, so Cache Manager works **out of the box** — no `AGENTS.md` / `CLAUDE.md` setup needed. Clients that ignore server instructions can paste the minimal snippet from [`AGENTS.md`](AGENTS.md).
 
-So the workflow is agent-mediated and MCP-client-compatible:
+Everything is **agent-mediated**: MCP servers are request-driven and cannot observe a conversation, intercept prompts, clear the model's context, open a fresh chat, or force a summary. The server tracks and nudges; the agent makes the calls.
 
-1. The agent calls `start_session` or preferably `resume_or_start` when work begins.
-2. The agent calls `heartbeat` after every chat interaction and after meaningful intermediate actions.
-3. At the end of every turn, the agent calls `heartbeat` first, immediately before final response text; only after that heartbeat does it call `status` or `countdown` if an end-of-turn status/readout is needed; then it sends final response text. The agent must never call `status`/`countdown` as the final tool before final text unless `heartbeat` was called immediately before it in the same end-of-turn sequence.
-4. The agent calls `status` periodically or before long operations, or `countdown` when a display-friendly timer should be shown to the user.
-5. If `should_summarize` is true, including after 4 minutes of inactivity by default, the agent calls `handoff_prompt`, summarizes durable restart context, and preferably calls `checkpoint`.
-6. After significant work, the agent may proactively create compact checkpoints even before TTL/idle warnings to reduce restart cost and avoid cache misses.
-7. If TTL has expired or a context reset is required, the agent checkpoints and then stops substantive work in the current agent conversation, providing a copy/paste prompt for a fresh conversation.
-8. A fresh conversation can call `latest_memory` or `resume_or_start` to recover context with fewer tokens.
-9. Returning to an older chat can use a stable `session_id` or `alias` to restore that thread's latest handoff memory.
+The loop:
 
-## Standalone MCP installation
+1. **Resume** — at the start of a chat, the agent calls `resume_or_start` with a stable `alias`. If a memory is returned, it reads it as restart context before anything else.
+2. **Heartbeat (start and end of each chat request)** — at the **start of each chat request** (a new user prompt), the agent calls `heartbeat` with `phase: "start"` so the dashboard shows the chat as **running** (which suppresses the idle/TTL countdown while it works). When it has finished answering that request — after **all** the turns and tool calls needed to respond — it calls `heartbeat` with `phase: "end"` so the idle/TTL countdown resumes. It may also send plain `heartbeat` pings (default `phase: "progress"`) after meaningful steps in between. This feeds the external dashboard/notifier; it is **not** a checkpoint trigger.
+3. **Checkpoint at natural cut points** — when the agent finishes a substantial unit of work (a logical stopping point, usually the end of a long task), it calls `checkpoint` with a compact summary (goal, what changed, decisions, next steps). It does **not** checkpoint mid-task or merely because time has passed.
+4. **Resume later** — a fresh chat calls `resume_or_start` (or `latest_memory`) with the same `alias` to recover context with fewer tokens.
 
-### From this repository
-
-```sh
-npm install
-npm test
-```
-
-Run the server directly:
-
-```sh
-node server/cache-manager.mjs
-```
-
-Or use the package bin from this checkout:
-
-```sh
-npx --no-install cache-manager-mcp
-```
-
-### As an npm package
-
-This repository is package-ready as `@dannyma/cache-manager-mcp`. Once published, install or run it with:
-
-```sh
-npm install -g @dannyma/cache-manager-mcp
-cache-manager-mcp
-```
-
-or:
-
-```sh
-npx -y @dannyma/cache-manager-mcp
-```
-
-### MCP client configuration
-
-Use an absolute path when running from a local checkout:
-
-```json
-{
-  "mcpServers": {
-    "cache_manager": {
-      "command": "node",
-      "args": ["/absolute/path/to/cache-manager/server/cache-manager.mjs"]
-    }
-  }
-}
-```
-
-If installed globally:
-
-```json
-{
-  "mcpServers": {
-    "cache_manager": {
-      "command": "cache-manager-mcp",
-      "args": []
-    }
-  }
-}
-```
-
-If using `npx`:
-
-```json
-{
-  "mcpServers": {
-    "cache_manager": {
-      "command": "npx",
-      "args": ["-y", "@dannyma/cache-manager-mcp"]
-    }
-  }
-}
-```
-
-The server communicates over stdio and supports standard MCP `Content-Length` framing. It also accepts newline-delimited JSON for local smoke tests.
+TTL/idle metrics power the external dashboard and cost visibility only — they are **never** a reason for the agent to checkpoint.
 
 ## Optional editor extensions
 
@@ -128,10 +125,10 @@ packaging caveats.
 Available tools:
 
 - `resume_or_start`: restore the latest memory for an alias/session if available, then start a fresh TTL tracking session in one call. Prefer this for startup/resume flows after an alias has been selected.
-- `checkpoint`: save a compact handoff memory and optionally start a fresh TTL session in one call. Prefer this after significant work, near TTL expiry, or before risky context loss. Its response includes a `restart_prompt` that can be pasted into a fresh agent conversation when a real context reset is desired.
+- `checkpoint`: save a compact handoff memory and optionally start a fresh TTL session in one call. Call this when you finish a substantial unit of work (a natural cut point, usually the end of a long task) — not mid-task or merely because time has passed. Its response includes a `restart_prompt` that can be pasted into a fresh agent conversation when a real context reset is desired.
 - `start_session`: start/reset TTL and idle tracking for a session. If an `alias` is provided without a `session_id`, the alias is slugged into a stable session ID and stored.
-- `heartbeat`: record agent activity and return current TTL/idle status. Agents should call this after every chat interaction, after meaningful work, and first in the required end-of-turn sequence immediately before final response text, because MCP cannot observe request submission or run tools after the final response is sent.
-- `status`: check whether the current session is near TTL expiry or idle. At the end of a turn, call this only after an immediately preceding `heartbeat` if a final status/readout is needed.
+- `heartbeat`: record agent activity and return current TTL/idle status. Call with `phase: "start"` at the start of each chat request (a new user prompt) to mark the chat **running** on the dashboard, with `phase: "end"` immediately before the final response text (after all turns answering that request) to close it so the idle/TTL countdown resumes, or omit `phase` (defaults to `progress`) for a plain activity ping after meaningful steps. MCP cannot observe request submission or run tools after the final response is sent, so these calls are agent-mediated. This feeds the external dashboard/notifier; the TTL/idle it returns are not a checkpoint trigger.
+- `status`: return the session's current TTL/idle/turn metrics — the same view the external dashboard renders (informational only). At the end of a turn, call this only after an immediately preceding `heartbeat` if a final status/readout is needed.
 - `countdown`: render a display-friendly countdown timer with prompt TTL remaining, inactivity time, and alert state. At the end of a turn, call this only after an immediately preceding `heartbeat` if a final timer/readout is needed.
 - `handoff_prompt`: generate summarization instructions for the agent.
 - `save_memory`: save a compact markdown handoff memory. If called with a new `alias`, the alias is slugged into a stable session ID and stored.
@@ -166,23 +163,23 @@ To show the timer, call:
 
 with the `countdown` tool. The output includes TTL remaining, inactive time, alert countdown, severity, and next-step guidance.
 
-Required end-of-turn ordering:
+Required per-request ordering (one chat request = one user prompt and the full answer to it):
 
-1. Call `heartbeat` first, immediately before final response text.
-2. Only after that heartbeat, call `status` or `countdown` if an end-of-turn status/readout is needed.
-3. Then send final response text.
-4. Never call `status`/`countdown` as the final tool before final text unless `heartbeat` was called immediately before it in the same end-of-turn sequence.
+1. At the **start** of the chat request, call `heartbeat` with `phase: "start"` to mark the chat **running** on the dashboard.
+2. While working, optionally send plain `heartbeat` pings (`phase: "progress"`) after meaningful steps.
+3. At the **end** of the chat request, call `heartbeat` with `phase: "end"` first, immediately before the final response text — this closes the running turn so the idle/TTL countdown resumes.
+4. Only after that `phase: "end"` heartbeat, call `status` or `countdown` if a final status/readout is needed; then send the final response text.
+5. Never call `status`/`countdown` as the final tool before final text unless `heartbeat` was called immediately before it.
 
-When status returns `should_summarize: true`, the agent should:
+When you finish a substantial unit of work — a natural cut point, usually the end of a long task — checkpoint it:
 
-1. Call `handoff_prompt` if summarization guidance is needed.
-2. Use the returned prompt to create a concise restart summary.
-3. Prefer `checkpoint` with the summary to save memory and start a fresh TTL session in one call.
-4. Directly output the cost insights from `checkpoint` in the same turn as the summary request. If `checkpoint` is unavailable or does not return sufficient cost detail, call `session_stats` and include the relevant session/alias cost insights in the same turn.
-5. Immediately after the cost insights, provide a copyable prompt for continuing in a new agent chat/window.
-6. If TTL is expired or the user wants a clean context reset, stop substantive work in the current agent conversation and provide the `restart_prompt` for a new chat.
+1. Call `handoff_prompt` first if you want summarization guidance (optional).
+2. Write a concise restart summary (goal, what changed, decisions, next steps).
+3. Call `checkpoint` with the summary to save memory and start a fresh TTL session in one call.
+4. Directly output the cost insights from `checkpoint` in the same turn. If `checkpoint` is unavailable or does not return sufficient cost detail, call `session_stats` and include the relevant session/alias cost insights.
+5. If the user wants a clean context reset, provide the returned `restart_prompt` for a new chat.
 
-Agents should also checkpoint proactively after significant work, such as important file reads, edits, validation runs, architecture decisions, multi-step task phases, or before long responses.
+The server raises a work-volume `checkpoint_suggested` hint — and bundles a ready-to-use `checkpoint_suggestion` (example handoff prompt + usage/cost stats) in the `heartbeat` response — once a decent chunk of work has accrued since the last checkpoint. Treat it as a convenient prompt to checkpoint at the next natural boundary, not a hard trigger. Don't checkpoint after every small action (file reads, single edits); checkpoint at the end of coherent work items. TTL/idle are dashboard-only and never a checkpoint trigger.
 
 Example `checkpoint` call with a stable alias:
 
@@ -338,9 +335,9 @@ zero; dated-snapshot ids (e.g. `claude-opus-4-8-20260...`) match by prefix.
 
 Starting a new MCP tracking session does **not** clear the current model/client conversation context. A true context reset requires the user to start a fresh conversation in their MCP client.
 
-When TTL expires, the intended workflow is:
+When you've just checkpointed at a natural cut point and the user wants a clean context reset (or the live chat has simply grown long), the flow is:
 
-1. The agent creates a compact checkpoint with durable restart context.
+1. The agent creates a compact checkpoint with durable restart context (if it hasn't already at this cut point).
 2. The agent does **not** continue substantive implementation/debugging/guidance in the same conversation.
 3. The agent shows a copy/paste prompt like:
 
@@ -582,4 +579,3 @@ Proactive, in-client notifications would require the MCP host to expose native e
 - Replace polling with proactive behavior if host clients expose native notifications, status items, or agent lifecycle hooks.
 - Add a `restore_thread` helper that combines alias resolution, latest-memory lookup, and session start.
 - Add project-scoped memory stores.
-- Publish the npm package after choosing the final package name.

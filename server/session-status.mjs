@@ -39,20 +39,19 @@ export function formatDuration(ms) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+// Agent-facing guidance. Checkpointing is driven by work-item boundaries (the
+// agent's judgment + the work-volume `checkpoint_suggested` nudge), NOT by TTL.
+// TTL/idle (near_ttl/expired/idle/should_summarize) remain in the status object
+// for the external dashboard, notifier, and severity coloring, but they are no
+// longer surfaced to the agent as a reason to checkpoint.
 export function recommendationForStatus(status) {
   if (status.running) {
     return "A turn is in progress. Keep calling heartbeat after meaningful steps; call heartbeat with phase 'end' immediately before the final response text.";
   }
-  if (status.expired) {
-    return "TTL expired. Create a compact checkpoint memory, then do not continue substantive work in this same agent conversation. Start a fresh MCP client conversation with the returned restart prompt so the latest memory is restored into a fresh context.";
-  }
-  if (status.near_ttl || status.idle) {
-    return "Create a compact checkpoint memory before doing more non-trivial work. If a context reset is desired, stop after checkpointing and start a fresh MCP client conversation with the restart prompt.";
-  }
   if (status.checkpoint_suggested) {
-    return `A good chunk of work has accrued since the last checkpoint (${status.checkpoint_reason}). Consider checkpointing now so a handoff stays cheap: call cache-manager.checkpoint with a compact summary. The heartbeat response already includes an example restart prompt and usage/cost stats for this stage.`;
+    return `A substantial chunk of work has accrued since the last checkpoint (${status.checkpoint_reason}). If you've just finished a coherent unit of work, this is a good cut point — call cache-manager.checkpoint with a compact summary. Otherwise keep going. The heartbeat response already includes an example restart prompt and usage/cost stats for this stage.`;
   }
-  return "Continue. Call heartbeat after every chat interaction before final response text, and call status periodically.";
+  return "Continue. Call heartbeat at the end of each turn (it keeps the dashboard current). Checkpoint when you finish a substantial unit of work so the next session can resume cheaply. TTL/idle are dashboard-only and not a checkpoint trigger.";
 }
 
 // Compute the live TTL/idle status for a stored session record. The TTL is a
