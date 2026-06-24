@@ -1,0 +1,7 @@
+/target/
+/extensions/zed/target/
+/.tmp-cache/
+.DS_Store
+.claude/settings.local.json
+/memories/
+/extensions/zed/extension.wasm

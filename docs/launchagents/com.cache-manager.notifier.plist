@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cache-manager.notifier</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/ABSOLUTE/PATH/TO/cache-manager/server/cache-manager-notifier.mjs</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CACHE_MANAGER_NOTIFY_CLICK_TO_COPY</key>
+    <string>false</string>
+    <key>CACHE_MANAGER_NOTIFY_COPY_ON_IDLE</key>
+    <string>true</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/cache-manager-notifier.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/cache-manager-notifier.err.log</string>
+</dict>
+</plist>

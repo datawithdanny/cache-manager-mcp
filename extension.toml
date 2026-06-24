@@ -1,0 +1,10 @@
+id = "cache-manager-mcp"
+name = "Cache Manager"
+version = "0.1.0"
+schema_version = 1
+authors = ["Danny Ma"]
+description = "Agent-accessible prompt TTL and conversation handoff memory tools."
+repository = "https://github.com/datawithdanny/cache-manager-mcp"
+
+[context_servers.cache_manager]
+name = "Cache Manager"

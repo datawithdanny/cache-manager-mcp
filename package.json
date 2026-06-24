@@ -1,0 +1,54 @@
+{
+  "name": "@dannyma/cache-manager-mcp",
+  "version": "0.1.0",
+  "description": "Standalone MCP server for prompt TTL tracking, handoff memories, aliases, and transcript-derived usage stats.",
+  "type": "module",
+  "bin": {
+    "cache-manager-mcp": "./server/cache-manager.mjs",
+    "cache-manager-notifier": "./server/cache-manager-notifier.mjs",
+    "cache-manager-dashboard": "./server/cache-manager-dashboard.mjs"
+  },
+  "files": [
+    "server/*.mjs",
+    "scripts/*.mjs",
+    "docs/**/*.md",
+    "docs/**/*.plist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node scripts/smoke-mcp.mjs && node scripts/smoke-notifier.mjs && node scripts/smoke-dashboard.mjs && node scripts/smoke-checkpoint-suggestion.mjs && node scripts/smoke-turn-timer.mjs && node scripts/smoke-memory-filename.mjs && node scripts/smoke-attribution.mjs",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs",
+    "smoke:notifier": "node scripts/smoke-notifier.mjs",
+    "smoke:dashboard": "node scripts/smoke-dashboard.mjs",
+    "smoke:checkpoint": "node scripts/smoke-checkpoint-suggestion.mjs",
+    "smoke:turn": "node scripts/smoke-turn-timer.mjs",
+    "smoke:filename": "node scripts/smoke-memory-filename.mjs",
+    "smoke:attribution": "node scripts/smoke-attribution.mjs",
+    "start": "node server/cache-manager.mjs",
+    "notifier": "node server/cache-manager-notifier.mjs",
+    "dashboard": "node server/cache-manager-dashboard.mjs",
+    "install:launchagent": "bash scripts/install-launchagent.sh",
+    "uninstall:launchagent": "bash scripts/install-launchagent.sh --uninstall"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "cache",
+    "handoff"
+  ],
+  "author": "Danny Ma",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/datawithdanny/cache-manager-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/datawithdanny/cache-manager-mcp/issues"
+  },
+  "homepage": "https://github.com/datawithdanny/cache-manager-mcp#readme",
+  "engines": {
+    "node": ">=20"
+  }
+}
