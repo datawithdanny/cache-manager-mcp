@@ -94,6 +94,17 @@ function slug(value) {
   );
 }
 
+// Project-group fallback when an alias is created without one: the basename of
+// the working directory (e.g. `/Users/me/Code/acme-app` -> `acme-app`). The
+// basename IS the natural simplification of a long path, so no truncation rule.
+// Kept as a free-form display string (like user-supplied groups such as
+// "Acme") — not slugged. Returns null for a root/empty dir so we never invent a
+// meaningless group.
+function defaultProjectGroup(cwd) {
+  const base = path.basename(cwd || process.cwd() || "").trim();
+  return base || null;
+}
+
 function resolveSessionId(args = {}) {
   if (args.session_id) return args.session_id;
   if (!args.alias) return "default";
@@ -373,7 +384,7 @@ function textResult(payload) {
 // added to context every session.
 const SERVER_INSTRUCTIONS = [
   "Cache Manager keeps per-chat context so agents can resume cheaply across sessions. Workflow:",
-  "1. RESUME — at the start of a chat, call resume_or_start with a stable `alias` (one per project/task). If it returns a memory, read it as restart context before anything else. If the response includes a `dashboard_url`, surface that localhost link to the user once so they can open the live web dashboard.",
+  "1. RESUME — at the start of a chat, call resume_or_start with a stable `alias` (one per project/task). If the user didn't name a thread, derive a short kebab-case `alias` summarizing their first message (the task in ~2-4 words); if they didn't name a project, pass the working-directory basename as `project_group` (the server also defaults this for you if omitted). If it returns a memory, read it as restart context before anything else. If the response includes a `dashboard_url`, surface that localhost link to the user once so they can open the live web dashboard.",
   "2. HEARTBEAT — at the start of each chat request (a new user prompt), call heartbeat with phase:'start' so the dashboard shows the chat 'running'. When you finish answering that request (after ALL the turns/tool calls needed to respond), call heartbeat with phase:'end' immediately before your final response text so the idle/TTL countdown resumes. Optionally send plain heartbeat pings (phase:'progress') after meaningful steps in between. This feeds the external dashboard; it is required for the dashboard, not a checkpoint trigger.",
   "3. CHECKPOINT at natural cut points — when you finish a substantial unit of work (a logical stopping point, usually the end of a long task), call checkpoint with a compact summary (goal, what changed, decisions, next steps). Do NOT checkpoint mid-task or merely because time has passed.",
   "4. RESUME LATER — in a new chat, call resume_or_start with the same alias to restore the latest checkpoint.",
@@ -405,7 +416,7 @@ const tools = [
         project_group: {
           type: "string",
           description:
-            "Optional project group for this alias, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set.",
+            "Optional project group for this alias, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set. If omitted and no group is set yet, defaults to the working-directory basename.",
         },
         ttl_seconds: {
           type: "number",
@@ -587,7 +598,7 @@ const tools = [
         alias: {
           type: "string",
           description:
-            "Human-friendly thread alias. If new, it is mapped to a slugged session_id.",
+            "Human-friendly thread alias (one per project/task). If new, it is mapped to a slugged session_id. If the user didn't name one, derive a short kebab-case alias summarizing their first message.",
         },
         label: {
           type: "string",
@@ -596,7 +607,7 @@ const tools = [
         project_group: {
           type: "string",
           description:
-            "Optional project group for this alias, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set.",
+            "Optional project group for this alias, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set. If omitted and no group is set yet, defaults to the working-directory basename.",
         },
         ttl_seconds: {
           type: "number",
@@ -777,7 +788,7 @@ const tools = [
         project_group: {
           type: "string",
           description:
-            "Optional project group to file this alias under, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set; pass an empty string to clear it.",
+            "Optional project group to file this alias under, so the dashboards can group aliases and aggregate cost/savings per project (e.g. 'acme-app'). Sticky once set; pass an empty string to clear it. If omitted and no group is set, defaults to the working-directory basename.",
         },
       },
     },
@@ -929,16 +940,19 @@ function getSession(args = {}, create = false) {
   return { sessions, session, id };
 }
 
-function upsertAlias(alias, sessionId, title, projectGroup) {
+function upsertAlias(alias, sessionId, title, projectGroup, cwd) {
   if (!alias) return null;
   const aliases = readAliases();
   const previous = aliases[alias] || {};
-  // Group an alias under an optional project group for dashboard grouping and
-  // per-group cost/savings aggregation. Sticky: a later call that omits the
-  // group keeps the previously set one; pass an empty string to clear it.
+  // Group an alias under a project group for dashboard grouping and per-group
+  // cost/savings aggregation. Sticky: a later call that omits the group keeps
+  // the previously set one; pass an empty string to clear it. When the group is
+  // omitted AND none was ever set, fall back to the working-directory basename
+  // so an alias created without an explicit project still lands in a sensible
+  // bucket instead of "Ungrouped".
   const nextGroup =
     projectGroup === undefined
-      ? (previous.project_group ?? null)
+      ? (previous.project_group ?? defaultProjectGroup(cwd))
       : projectGroup || null;
   const record = {
     alias,
@@ -1001,6 +1015,7 @@ function startSession(args = {}) {
     session.id,
     args.label,
     args.project_group,
+    session.cwd,
   );
   return { session, alias, status: sessionStatus(session) };
 }
@@ -1041,7 +1056,13 @@ function saveMemory(args = {}) {
     .filter(Boolean)
     .join("\n");
   fs.writeFileSync(target, body);
-  const alias = upsertAlias(args.alias, sessionId, title, args.project_group);
+  const alias = upsertAlias(
+    args.alias,
+    sessionId,
+    title,
+    args.project_group,
+    args.cwd,
+  );
   return {
     ok: true,
     path: target,
@@ -1449,6 +1470,7 @@ function callTool(name, args = {}) {
       args.session_id,
       args.title,
       args.project_group,
+      args.cwd,
     );
     return textResult({ ok: true, alias });
   }

@@ -422,10 +422,15 @@ Set a group when you start or tag a thread:
 - `resume_or_start` / `start_session`: pass `project_group: "acme-app"`.
 - `set_alias`: pass `project_group: "acme-app"` to (re)tag an existing alias.
 
+If you don't pass one when an alias is first created, it defaults to the
+**working-directory basename** (e.g. a thread started in `~/Code/acme-app` is
+grouped under `acme-app`), so threads land in a sensible bucket even when no
+project is named.
+
 The group is **sticky** — once set it persists across later calls that omit it;
 pass an empty string to clear it. It is stored as `project_group` on each alias
-record in `aliases.json`; pre-existing aliases (and any untagged alias) are
-treated as **Ungrouped**.
+record in `aliases.json`; pre-existing aliases (and any alias whose group was
+explicitly cleared) are treated as **Ungrouped**.
 
 Both dashboards then group their rows by project group and show a per-group
 **cost** and **savings** subtotal (savings = the extra cost a 90%-cache-miss run

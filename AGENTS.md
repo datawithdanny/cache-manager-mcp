@@ -20,10 +20,13 @@ client **ignores** server `instructions`.
 This workspace has an MCP server named `cache_manager`. Use it as follows:
 
 1. RESUME — at the start of a chat, call `cache_manager.resume_or_start` with a
-   stable `alias` (one per project/task). If it returns a memory, read it as
-   restart context before anything else. If the response includes a
-   `dashboard_url`, surface that localhost link to the user once so they can
-   open the live web dashboard.
+   stable `alias` (one per project/task). If the user didn't name a thread,
+   derive a short kebab-case `alias` summarizing their first message (the task
+   in ~2-4 words); if they didn't name a project, pass the working-directory
+   basename as `project_group` (the server also defaults this for you if
+   omitted). If it returns a memory, read it as restart context before anything
+   else. If the response includes a `dashboard_url`, surface that localhost link
+   to the user once so they can open the live web dashboard.
 2. HEARTBEAT — at the start of each chat request (a new user prompt), call
    `cache_manager.heartbeat` with `phase: "start"` so the dashboard shows the chat
    running. When you finish answering that request (after all turns/tool calls),

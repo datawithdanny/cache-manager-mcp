@@ -181,8 +181,39 @@ try {
     method: "tools/call",
     params: { name: "list_aliases", arguments: {} },
   });
+  // Sticky preservation: re-starting an alias that ALREADY has a group, with
+  // project_group omitted, must KEEP its group — not re-default it to the cwd
+  // basename. This is the regression that would silently re-bucket every
+  // existing user's grouped aliases, so it is locked explicitly.
+  send({
+    jsonrpc: "2.0",
+    id: 8,
+    method: "tools/call",
+    params: {
+      name: "start_session",
+      arguments: { alias: "smoke-test", ttl_seconds: 300 },
+    },
+  });
+  // Auto project-group: an alias created with NO group ever set defaults to the
+  // working-directory basename (server runs with cwd=ROOT), so a thread started
+  // without an explicit project still lands in a sensible bucket.
+  send({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "tools/call",
+    params: {
+      name: "start_session",
+      arguments: { alias: "auto-group-test", ttl_seconds: 300 },
+    },
+  });
+  send({
+    jsonrpc: "2.0",
+    id: 10,
+    method: "tools/call",
+    params: { name: "list_aliases", arguments: {} },
+  });
 
-  const responses = await waitForResponses(7);
+  const responses = await waitForResponses(10);
   const byId = new Map(responses.map((response) => [response.id, response]));
 
   assert.equal(byId.get(1)?.result?.serverInfo?.name, "cache-manager");
@@ -249,6 +280,26 @@ try {
     smokeRecord?.project_group,
     "smoke-group",
     "list_aliases should surface project_group",
+  );
+
+  const listed2 = JSON.parse(byId.get(10)?.result?.content?.[0]?.text ?? "{}");
+  // Sticky preservation: re-start with omitted group (id 8) kept "smoke-group".
+  const smokeRecord2 = (listed2.aliases ?? []).find(
+    (a) => a.alias === "smoke-test",
+  );
+  assert.equal(
+    smokeRecord2?.project_group,
+    "smoke-group",
+    "omitted project_group on re-start must preserve the existing group",
+  );
+  // Auto default: alias that never had a group (id 9) gets the cwd basename.
+  const autoRecord = (listed2.aliases ?? []).find(
+    (a) => a.alias === "auto-group-test",
+  );
+  assert.equal(
+    autoRecord?.project_group,
+    path.basename(ROOT),
+    "omitted project_group defaults to the working-directory basename",
   );
 
   console.log("MCP smoke test passed");
