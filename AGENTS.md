@@ -27,13 +27,18 @@ This workspace has an MCP server named `cache_manager`. Use it as follows:
    omitted). If it returns a memory, read it as restart context before anything
    else. If the response includes a `dashboard_url`, surface that localhost link
    to the user once so they can open the live web dashboard.
-2. HEARTBEAT — at the start of each chat request (a new user prompt), call
+2. HEARTBEAT — every chat request must be bracketed by a matching pair of
+   heartbeats; this is mandatory, not optional. At the very start of each chat
+   request (a new user prompt), before other work, call
    `cache_manager.heartbeat` with `phase: "start"` so the dashboard shows the chat
-   running. When you finish answering that request (after all turns/tool calls),
-   call `cache_manager.heartbeat` with `phase: "end"` immediately before your final
-   response text so the idle/TTL countdown resumes. Plain pings (`phase:
-   "progress"`) after meaningful steps are optional. Feeds the external
-   dashboard; not a checkpoint trigger.
+   running. Immediately before your final response text — after all turns/tool
+   calls answering that request — call `cache_manager.heartbeat` with
+   `phase: "end"` so the idle/TTL countdown resumes. Never send your final
+   response without a matching `phase: "end"`: a missing `end` leaves the chat
+   falsely showing running when it is actually idle. This applies even when a
+   request ends early — if you ask a clarifying question, hand off, or stop, still
+   send `phase: "end"` first. Plain pings (`phase: "progress"`) after meaningful
+   steps are optional. Feeds the external dashboard; not a checkpoint trigger.
 3. CHECKPOINT at natural cut points — when you finish a substantial unit of work
    (a logical stopping point, usually the end of a long task), call
    `cache_manager.checkpoint` with a compact summary (goal, what changed,
