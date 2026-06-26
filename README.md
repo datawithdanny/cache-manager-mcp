@@ -75,10 +75,10 @@ Then point your client at an absolute path to the local server:
 
 ## How it flows in a chat
 
-The diagram below shows the logical flow of `cache_manager` tool calls across a regular agent chat: the agent resumes context once, heartbeats through the turn loop, and checkpoints at natural cut points — when a substantial work item is finished — so a fresh chat can resume cheaply.
+The diagram below shows the logical flow of `cache_manager` tool calls across a regular agent chat: the agent resumes context once, brackets every request with a paired `heartbeat phase:'start'` → work → `heartbeat phase:'end'`, and checkpoints at natural cut points — when a substantial work item is finished — so a fresh chat can resume cheaply.
 
 <p align="center">
-  <img src="assets/flow-dag.svg" alt="Tool-call flow: agent chat begins → resume_or_start → heartbeat/status loop every turn → when a substantial work item is finished, handoff_prompt → checkpoint → fresh chat resumes" width="640">
+  <img src="assets/flow-dag.svg" alt="Tool-call flow: agent chat begins → resume_or_start → every request is bracketed by heartbeat phase:'start' → work → heartbeat phase:'end' → when a substantial work item is finished, handoff_prompt → checkpoint → fresh chat resumes" width="640">
 </p>
 
 ## What it does

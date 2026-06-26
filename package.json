@@ -1,6 +1,6 @@
 {
   "name": "@dannyma/cache-manager-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Standalone MCP server for prompt TTL tracking, handoff memories, aliases, and transcript-derived usage stats.",
   "type": "module",
   "bin": {

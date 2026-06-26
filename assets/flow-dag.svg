@@ -26,15 +26,17 @@
 
   <!-- ================= CONTAINER: every turn (drawn under nodes/edges) ================= -->
   <rect x="96" y="244" width="508" height="344" rx="18" fill="#f6fbfd" stroke="#bfe6ec" stroke-width="2" stroke-dasharray="2 4"/>
-  <text class="hd" x="116" y="270" font-size="15" fill="#0c6470">&#8635; DURING THE CHAT &#8212; every turn</text>
+  <text class="hd" x="116" y="270" font-size="15" fill="#0c6470">&#8635; EVERY REQUEST &#8212; heartbeat bracket</text>
 
   <!-- ================= EDGES ================= -->
   <!-- start -> resume -->
   <path d="M350 96 L350 130" stroke="#6b7a90" stroke-width="2.4" fill="none" marker-end="url(#arrow)"/>
   <!-- resume -> heartbeat -->
   <path d="M350 216 L350 286" stroke="#6b7a90" stroke-width="2.4" fill="none" marker-end="url(#arrow)"/>
-  <!-- heartbeat -> status -->
+  <!-- heartbeat start -> heartbeat end (the turn's work happens here) -->
   <path d="M350 350 L350 390" stroke="#6b7a90" stroke-width="2.4" fill="none" marker-end="url(#arrow)"/>
+  <text class="edge" x="362" y="367" font-size="12.5" fill="#6b7a90">do the work &#183; optional progress pings</text>
+  <text class="sub" x="362" y="384" font-size="11" fill="#7a8aa0">check status / countdown anytime (optional)</text>
   <!-- status -> decision -->
   <path d="M350 454 L350 474" stroke="#6b7a90" stroke-width="2.4" fill="none" marker-end="url(#arrow)"/>
   <!-- decision NO loop back up to heartbeat (routed outside container, left) -->
@@ -68,15 +70,15 @@
   <g filter="url(#ds)">
     <rect x="196" y="288" width="308" height="62" rx="16" fill="#d3f0f4" stroke="#4bb6c4" stroke-width="2"/>
   </g>
-  <text class="tool" x="350" y="318" text-anchor="middle" font-size="18" fill="#0c6470">heartbeat</text>
-  <text class="sub" x="350" y="338" text-anchor="middle" font-size="12.5" fill="#3a7480">after every interaction &#183; keeps cache warm</text>
+  <text class="tool" x="350" y="314" text-anchor="middle" font-size="16" fill="#0c6470">heartbeat &#183; phase:'start'</text>
+  <text class="sub" x="350" y="335" text-anchor="middle" font-size="12.5" fill="#3a7480">before any work &#183; marks the chat 'running'</text>
 
   <!-- status / countdown -->
   <g filter="url(#ds)">
-    <rect x="196" y="392" width="308" height="62" rx="16" fill="#dce8ff" stroke="#6f9bf0" stroke-width="2"/>
+    <rect x="196" y="392" width="308" height="62" rx="16" fill="#d3f0f4" stroke="#4bb6c4" stroke-width="2"/>
   </g>
-  <text class="tool" x="350" y="422" text-anchor="middle" font-size="17" fill="#29508f">status  /  countdown</text>
-  <text class="sub" x="350" y="442" text-anchor="middle" font-size="12.5" fill="#4a6aa0">check TTL &#183; show timer before long work</text>
+  <text class="tool" x="350" y="418" text-anchor="middle" font-size="16" fill="#0c6470">heartbeat &#183; phase:'end'</text>
+  <text class="sub" x="350" y="439" text-anchor="middle" font-size="12.5" fill="#3a7480">right before the reply &#183; resumes the countdown</text>
 
   <!-- decision diamond -->
   <g filter="url(#ds)">
