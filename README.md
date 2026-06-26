@@ -6,6 +6,14 @@
 
 A standalone [Model Context Protocol (MCP)] server for agent prompt TTL tracking, conversation handoff memories, aliases, and transcript-derived usage stats. It runs in any stdio-capable MCP client. An optional, thin Zed editor-extension wrapper is provided from the repository root.
 
+## Why it saves tokens
+
+Prompt caching makes a warm turn roughly **10× cheaper** than a cold one — but that cache has a short TTL. Cache Manager doesn't create the saving (only the model's cache does); it keeps that TTL window **visible** so you act before it lapses, and lets a fresh chat **resume from a compact handoff memory** instead of re-deriving the whole project.
+
+<p align="center">
+  <img src="assets/value-explainer.svg" alt="Why a warm cache costs ~10x less per turn: every request reuses a big cached prefix billed at the cache-read rate ($0.50/1M) vs full input ($5/1M) when cold; the cache has a 5-minute TTL that resets while you work and expires when idle, making the next turn a cold start; over a session a 90%-miss run costs ~3.5x more. Cache Manager shows the live TTL countdown and per-session cost, and resumes from a compact memory when the cache is gone." width="820">
+</p>
+
 ## Installation
 
 <p align="center">
